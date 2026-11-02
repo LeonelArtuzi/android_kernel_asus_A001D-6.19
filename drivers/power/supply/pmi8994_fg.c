@@ -1074,6 +1074,12 @@ static int pmi8994_fg_probe(struct platform_device *pdev)
 	}
 
 	if (chip->chg_psy) {
+		union power_supply_propval propval;
+
+		/* The charger may have probed first, so its change event was already sent */
+		if (!power_supply_get_property(chip->chg_psy, POWER_SUPPLY_PROP_STATUS, &propval))
+			chip->status = propval.intval;
+
 		ret = power_supply_reg_notifier(&chip->nb);
 		if (ret) {
 			dev_err(chip->dev,
