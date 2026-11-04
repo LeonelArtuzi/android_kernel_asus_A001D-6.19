@@ -179,6 +179,11 @@ vmlinuz.efi image.fit: Image
 $(BOOT_TARGETS): vmlinux
 	$(Q)$(MAKE) $(build)=$(boot) $(boot)/$@
 
+# The stock LK on the ASUS ZB634KL only boots a DTB appended to the kernel
+PHONY += Image.gz-dtb
+Image.gz-dtb: Image.gz qcom/sdm450-asus-a001d.dtb
+	$(Q)cat $(boot)/Image.gz $(boot)/dts/qcom/sdm450-asus-a001d.dtb > $(boot)/$@
+
 Image.%: Image
 	$(Q)$(MAKE) $(build)=$(boot) $(boot)/$@
 
