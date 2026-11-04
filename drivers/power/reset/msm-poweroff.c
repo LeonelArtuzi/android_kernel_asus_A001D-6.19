@@ -23,6 +23,15 @@ static int do_msm_poweroff(struct sys_off_data *data)
 	return NOTIFY_DONE;
 }
 
+/* PSCI resets through the secure world, which ignores the PMIC warm reset setup */
+static int do_msm_warm_restart(struct sys_off_data *data)
+{
+	if (data->mode != REBOOT_WARM)
+		return NOTIFY_DONE;
+
+	return do_msm_poweroff(data);
+}
+
 static int msm_restart_probe(struct platform_device *pdev)
 {
 	msm_ps_hold = devm_platform_ioremap_resource(pdev, 0);
@@ -31,6 +40,9 @@ static int msm_restart_probe(struct platform_device *pdev)
 
 	devm_register_sys_off_handler(&pdev->dev, SYS_OFF_MODE_RESTART,
 				      128, do_msm_poweroff, NULL);
+
+	devm_register_sys_off_handler(&pdev->dev, SYS_OFF_MODE_RESTART,
+				      130, do_msm_warm_restart, NULL);
 
 	devm_register_sys_off_handler(&pdev->dev, SYS_OFF_MODE_POWER_OFF,
 				      SYS_OFF_PRIO_DEFAULT, do_msm_poweroff,

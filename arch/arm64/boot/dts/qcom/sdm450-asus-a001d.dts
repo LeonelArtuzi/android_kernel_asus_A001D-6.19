@@ -355,3 +355,34 @@
 &usb3 {
 	status = "okay";
 };
+
+&pm8953_pon {
+	qcom,warm-reset-on-reboot-cmd;
+};
+
+&soc {
+	/* The stock LK reads the restart reason here, not from the PMIC */
+	imem@8600000 {
+		compatible = "syscon", "simple-mfd";
+		reg = <0x08600000 0x1000>;
+
+		reboot-mode {
+			compatible = "syscon-reboot-mode";
+			offset = <0x65c>;
+			mask = <0xffffffff>;
+			mode-bootloader = <0x77665500>;
+			mode-recovery = <0x77665502>;
+		};
+	};
+};
+
+&spmi_bus {
+	pmic@2 {
+		/* Its PS_HOLD type defaults to shutdown, which would lose IMEM on a warm reset */
+		pon@800 {
+			compatible = "qcom,pm8916-pon";
+			reg = <0x800>;
+			qcom,warm-reset-on-reboot-cmd;
+		};
+	};
+};

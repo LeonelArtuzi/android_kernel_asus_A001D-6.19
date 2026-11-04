@@ -12,6 +12,11 @@
 #include <linux/reboot-mode.h>
 #include <linux/regmap.h>
 
+#define PON_PS_HOLD_RESET_CTL		0x5a
+#define PON_PS_HOLD_RESET_CTL2		0x5b
+#define PON_PS_HOLD_TYPE_MASK		GENMASK(3, 0)
+#define PON_PS_HOLD_TYPE_WARM_RESET	0x1
+#define PON_PS_HOLD_ENABLE		BIT(7)
 #define PON_SOFT_RB_SPARE		0x8f
 
 #define GEN1_REASON_SHIFT		2
@@ -25,6 +30,7 @@ struct qcom_pon {
 	u32 baseaddr;
 	struct reboot_mode_driver reboot_mode;
 	long reason_shift;
+	struct notifier_block reboot_nb;
 };
 
 static int qcom_pon_reboot_mode_write(struct reboot_mode_driver *reboot,
@@ -42,6 +48,46 @@ static int qcom_pon_reboot_mode_write(struct reboot_mode_driver *reboot,
 		dev_err(pon->dev, "update reboot mode bits failed\n");
 
 	return ret;
+}
+
+static int qcom_pon_set_warm_reset(struct qcom_pon *pon)
+{
+	int ret;
+
+	ret = regmap_clear_bits(pon->regmap, pon->baseaddr + PON_PS_HOLD_RESET_CTL2,
+				PON_PS_HOLD_ENABLE);
+	if (ret)
+		return ret;
+
+	/* The PMIC needs 10 sleep clock cycles, plus margin, before it takes the new type */
+	udelay(500);
+
+	ret = regmap_update_bits(pon->regmap, pon->baseaddr + PON_PS_HOLD_RESET_CTL,
+				 PON_PS_HOLD_TYPE_MASK, PON_PS_HOLD_TYPE_WARM_RESET);
+	if (ret)
+		return ret;
+
+	return regmap_set_bits(pon->regmap, pon->baseaddr + PON_PS_HOLD_RESET_CTL2,
+			       PON_PS_HOLD_ENABLE);
+}
+
+/* A reboot with a command must keep IMEM, where the bootloader reads the restart reason */
+static int qcom_pon_reboot_notify(struct notifier_block *nb, unsigned long action, void *data)
+{
+	struct qcom_pon *pon = container_of(nb, struct qcom_pon, reboot_nb);
+	const char *cmd = data;
+	int ret;
+
+	if (action != SYS_RESTART || !cmd || !cmd[0])
+		return NOTIFY_DONE;
+
+	ret = qcom_pon_set_warm_reset(pon);
+	if (ret)
+		dev_err(pon->dev, "can't set warm reset: %d\n", ret);
+	else
+		reboot_mode = REBOOT_WARM;
+
+	return NOTIFY_DONE;
 }
 
 static int qcom_pon_probe(struct platform_device *pdev)
@@ -78,6 +124,13 @@ static int qcom_pon_probe(struct platform_device *pdev)
 			dev_err(&pdev->dev, "can't register reboot mode\n");
 			return error;
 		}
+	}
+
+	if (of_property_read_bool(pdev->dev.of_node, "qcom,warm-reset-on-reboot-cmd")) {
+		pon->reboot_nb.notifier_call = qcom_pon_reboot_notify;
+		error = devm_register_reboot_notifier(&pdev->dev, &pon->reboot_nb);
+		if (error)
+			return error;
 	}
 
 	platform_set_drvdata(pdev, pon);

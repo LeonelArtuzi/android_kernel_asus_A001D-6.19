@@ -15,6 +15,7 @@ bateria do PMI8950.
 | DTS | `sdm450-asus-a001d.dts`, com tensões, memória reservada e ligações da stock |
 | Painel | `panel-tcl-ft8719.c`, gerado da DTB stock |
 | Bateria | `pmi8994_fg`: lê o status do carregador ao iniciar |
+| Reboot | Motivo no `imem`, reset morno no PM8953 e no PMI8950, e `PS_HOLD` direto em vez de PSCI |
 | Config | `a001d_twrp_defconfig`, com tudo que a recovery usa embutido |
 | Imagem | Alvo `Image.gz-dtb` em `arch/arm64/Makefile`, porque o LK stock só inicia com a DTB anexada |
 
@@ -32,6 +33,7 @@ Cada item abaixo já impediu o boot ou deixou o aparelho inutilizável:
 | `IPV6=y` | O `adbd` aborta |
 | `sys.use_memfd=true` (device tree) | Este kernel não tem `ashmem`, e o `recovery` aborta |
 | `FRAMEBUFFER_CONSOLE` desligado | O console do kernel desenha por cima do TWRP |
+| Reset morno também no PMI8950 | Por padrão, ele desliga quando o `PS_HOLD` cai. O `imem` se perde e `reboot bootloader` vai para o Android |
 
 ## Compilar
 
@@ -49,9 +51,9 @@ adb, MTP no Windows, porcentagem e status da bateria, limites de carga e CPU a 1
 
 ## Limitações
 
-- **`reboot bootloader` vai para o Android.** Use Energia + Volume para cima. Gravar o motivo no
-  `imem`, reset morno, `PS_HOLD` direto e chamada SCM não resolveram, e esse código foi revertido.
-  `Reboot` → `Recovery` provavelmente tem o mesmo problema, mas não foi testado.
+- **`Reboot` → `Recovery` não foi testado até o fim.** Usa o mesmo caminho do `reboot bootloader`, com outro valor no
+  `imem`. O teste inicia o kernel gravado na partição `recovery`, e o que está neste aparelho tem firmware de touch
+  diferente do stock.
 - **Sem descriptografia da `/data`.** Este kernel não tem o caminho de FDE da stock
   (`qseecom`, `dm-req-crypt`). Não é um ajuste simples de config.
 - **Só o painel TCL.** Em aparelhos com painel Boyi ou Holitech, **provavelmente não há imagem**,
