@@ -73,8 +73,6 @@ adb, MTP no Windows, porcentagem e status da bateria, limites de carga e CPU a 1
   stock ou o 4.9 iniciarem.
 - **GPIOs reservados:** a lista é uma estimativa baseada em outros telefones msm8953, porque a do
   A001D não é conhecida. Ler um GPIO protegido pode reiniciar o aparelho.
-- **Cluster lento no início do boot:** até o driver de clock carregar, entre 2,2 e 3 s, as CPUs 4-7 continuam no XO.
-  Depois disso, o `/init` começa entre 3,3 e 3,7 s e o adb sobe em 9 ou 10 s.
 - **Touch:** a primeira leitura I2C depois do reset nunca termina, e o driver a repete. A causa não foi encontrada.
 - **Avisos no log, sem efeito observado:**
   - `clk-rcg2: update_config` ao iniciar o painel.

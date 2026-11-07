@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-only
+#include <linux/bitfield.h>
 #include <linux/clk-provider.h>
 #include <linux/clk.h>
+#include <linux/delay.h>
 #include <linux/interconnect-clk.h>
 #include <linux/interconnect-provider.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/of_address.h>
 #include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <linux/pm_opp.h>
@@ -446,6 +449,69 @@ static struct platform_driver apcscc_msm8953_driver = {
 	},
 };
 module_platform_driver(apcscc_msm8953_driver);
+
+#ifndef MODULE
+#define APCS_RCG_CMD_UPDATE	BIT(0)
+#define APCS_RCG_CFG		0x4
+#define APCS_RCG_CFG_SRC	GENMASK(10, 8)
+
+/*
+ * Some bootloaders leave CPU4-7 on XO. The driver above only probes after CPR,
+ * which waits for RPM, so until then any thread scheduled there runs ~94x
+ * slower and stalls the boot. Like the downstream early_initcall, give the
+ * second cluster the boot cluster's source and divider (GPLL0 at 800 MHz on
+ * the ASUS ZB634KL). The boot voltage already supports that rate, and the boot
+ * cluster keeps the source running until this driver takes over.
+ */
+static int __init apcs_msm8953_early_cluster_clk(void)
+{
+	void __iomem *cpu0 = NULL, *cpu4 = NULL;
+	struct device_node *np;
+	u32 cfg0, cfg4;
+	int i;
+
+	/* SDM632 has a separate PLL for CPU4-7 */
+	if (of_machine_is_compatible("qcom,sdm632"))
+		return 0;
+
+	np = of_find_compatible_node(NULL, NULL, "qcom,apcs-cc-msm8953");
+	if (!np)
+		return 0;
+
+	i = of_property_match_string(np, "reg-names", "cpu0_rcg_cbr");
+	if (i >= 0)
+		cpu0 = of_iomap(np, i);
+	i = of_property_match_string(np, "reg-names", "cpu4_rcg_cbr");
+	if (i >= 0)
+		cpu4 = of_iomap(np, i);
+	of_node_put(np);
+	if (!cpu0 || !cpu4)
+		goto out;
+
+	cfg0 = readl_relaxed(cpu0 + APCS_RCG_CFG);
+	cfg4 = readl_relaxed(cpu4 + APCS_RCG_CFG);
+	if (FIELD_GET(APCS_RCG_CFG_SRC, cfg4) != apcs_mux_parent_map[XO] ||
+	    FIELD_GET(APCS_RCG_CFG_SRC, cfg0) == apcs_mux_parent_map[XO])
+		goto out;
+
+	writel(cfg0, cpu4 + APCS_RCG_CFG);
+	writel(readl(cpu4) | APCS_RCG_CMD_UPDATE, cpu4);
+	for (i = 0; i < 500 && (readl(cpu4) & APCS_RCG_CMD_UPDATE); i++)
+		udelay(1);
+
+	if (readl(cpu4) & APCS_RCG_CMD_UPDATE)
+		pr_err("apcs-msm8953: CPU4-7 source switch timed out\n");
+	else
+		pr_info("apcs-msm8953: CPU4-7 moved from XO to the boot cluster source\n");
+out:
+	if (cpu4)
+		iounmap(cpu4);
+	if (cpu0)
+		iounmap(cpu0);
+	return 0;
+}
+early_initcall(apcs_msm8953_early_cluster_clk);
+#endif
 
 MODULE_DEVICE_TABLE(of, apcs_msm8953_match_table);
 MODULE_AUTHOR("Vladimir Lypak <vladimir.lypak@gmail.com>");
