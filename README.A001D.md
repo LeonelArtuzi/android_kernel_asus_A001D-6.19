@@ -51,13 +51,11 @@ O `check_kernel.sh` falha se alguma opção pedida como `=y` não for aplicada.
 ## Testado
 
 Com TWRP via `fastboot boot`, em um ASUS_A001D_1 com painel TCL: boot, eMMC em HS400, tela, touch,
-adb, MTP no Windows, porcentagem e status da bateria, limites de carga e CPU a 1,8 GHz.
+adb, MTP no Windows, porcentagem e status da bateria, limites de carga e CPU a 1,8 GHz. Gravado na partição
+`recovery`, `reboot recovery` volta ao TWRP.
 
 ## Limitações
 
-- **`Reboot` → `Recovery` não foi testado até o fim.** Usa o mesmo caminho do `reboot bootloader`, com outro valor no
-  `imem`. O teste inicia o kernel gravado na partição `recovery`, e o que está neste aparelho tem firmware de touch
-  diferente do stock.
 - **Sem descriptografia da `/data`.** Este kernel não tem o caminho de FDE da stock
   (`qseecom`, `dm-req-crypt`). Não é um ajuste simples de config.
 - **Só o painel TCL.** Em aparelhos com painel Boyi ou Holitech, **provavelmente não há imagem**,
@@ -80,7 +78,7 @@ adb, MTP no Windows, porcentagem e status da bateria, limites de carga e CPU a 1
   - `cpu0: Failed to set OPP config` no início do boot.
   - `grep: Invalid argument`, do `toybox` do TWRP, ao ler pipes e `/proc`; o resultado continua certo.
 - **Sem suporte:** câmera, áudio, modem e Wi-Fi. A config desliga esses blocos ou não os testa.
-- **Não testado:** microSD, USB OTG, suspensão prolongada e instalação na partição `recovery`.
+- **Não testado:** microSD, USB OTG e suspensão prolongada.
 - **Histórico:** o clone é raso (`--depth=1`). Rode `git fetch --unshallow` antes de publicar.
 
 ## Sem USB? Como ler o log
