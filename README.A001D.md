@@ -17,6 +17,7 @@ bateria do PMI8950.
 | Bateria | `pmi8994_fg`: lê o status do carregador ao iniciar |
 | Entropia | `qcom-rng` lê a PRNG sem configurá-la, com o clock ligado, e alimenta o kernel. Sem isso, o `init` espera ~9 s |
 | I2C do touch | 100 kHz e tempo limite de 200 ms. A 400 kHz, como no stock, o touch trava por segundos |
+| Clock da CPU | `apcs-msm8953` conhece o XO como fonte, e o `assigned-clock-rates` do DT tira dele o cluster das CPUs 4-7, onde o LK o deixa. Sem isso, ele roda ~94x mais devagar e o sistema pausa por segundos |
 | Reboot | Motivo no `imem`, reset morno no PM8953 e no PMI8950, e `PS_HOLD` direto em vez de PSCI |
 | Config | `a001d_twrp_defconfig`, com tudo que a recovery usa embutido |
 | Imagem | Alvo `Image.gz-dtb` em `arch/arm64/Makefile`, porque o LK stock só inicia com a DTB anexada |
@@ -69,11 +70,9 @@ adb, MTP no Windows, porcentagem e status da bateria, limites de carga e CPU a 1
 - **Porcentagem da bateria:** pode ser menos precisa, porque o driver não usa o perfil da ASUS.
 - **GPIOs reservados:** a lista é uma estimativa baseada em outros telefones msm8953, porque a do
   A001D não é conhecida. Ler um GPIO protegido pode reiniciar o aparelho.
-- **Tempo de boot variável:** o adb sobe entre 9 e 18 s. A causa da variação é desconhecida: só descompactar o ramdisk
-  leva de 1,5 a 13 s, com a mesma imagem.
+- **Cluster lento no início do boot:** até o driver de clock carregar, entre 2,2 e 3 s, as CPUs 4-7 continuam no XO.
+  Depois disso, o `/init` começa entre 3,3 e 3,7 s e o adb sobe em 9 ou 10 s.
 - **Touch:** a primeira leitura I2C depois do reset nunca termina, e o driver a repete. A causa não foi encontrada.
-- **Cópia em memória:** uma única medição mostrou piora com o ajuste de frequência ligado, sem causa
-  conhecida. Na prática, o desempenho da interface ficou comparável ao do 4.9.
 - **Avisos no log, sem efeito observado:**
   - `clk-rcg2: update_config` ao iniciar o painel.
   - `cpu0: Failed to set OPP config` no início do boot.

@@ -149,16 +149,18 @@ static int apcs_register_pll(struct device *dev, int id, struct clk_hw **hws)
 enum apcs_mux_parents {
 	APCS_PLL,
 	GCC_PLL0,
+	XO,
 };
 
 static const u32 apcs_mux_parent_map[] = {
 	[APCS_PLL] = 5,
 	[GCC_PLL0] = 4,
+	/* Some bootloaders leave the second CPU cluster here */
+	[XO] = 0,
 	/* [GCC_PLL2_EARLY_DIV] = 6
 	 * [APCS_PLL_POSTDIV] = 3
 	 * [GCC_PLL2] = 2,
 	 * [GCC_PLL4] = 1,
-	 * [XO] = 0,
 	 */
 };
 
@@ -281,6 +283,7 @@ static int apcs_register_mux_div(struct device *dev, int id, struct clk_hw **hws
 
 	pdata[APCS_PLL].hw = hws[pll_id];
 	pdata[GCC_PLL0].fw_name = "gpll0";
+	pdata[XO].fw_name = "osc";
 
 	hws[id] = &md->clkr.hw;
 
