@@ -87,7 +87,8 @@
 		};
 
 		pmi8950_smbcharger: smbchager@1000 {
-			compatible = "qcom,pmi8996-smbchg";
+			/* Same current tables as PMI8994 (downstream use_pmi8994_tables) */
+			compatible = "qcom,pmi8994-smbchg";
 			reg = <0x1000>;
 			interrupts = <2 0x10 0 IRQ_TYPE_EDGE_BOTH>,
 					<2 0x10 1 IRQ_TYPE_EDGE_BOTH>,
