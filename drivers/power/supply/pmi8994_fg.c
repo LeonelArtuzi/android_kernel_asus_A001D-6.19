@@ -904,6 +904,9 @@ static int pmi8994_fg_probe(struct platform_device *pdev)
 	struct power_supply_config supply_config = {};
 	struct pmi8994_fg_chip *chip;
 	const struct pmi8994_fg_data *data;
+	struct power_supply_battery_info *info;
+	int soft_cold = BATT_TEMP_JEITA_COLD, soft_hot = BATT_TEMP_JEITA_WARM;
+	int hard_cold = BATT_TEMP_JEITA_COOL, hard_hot = BATT_TEMP_JEITA_HOT;
 	const __be32 *prop_addr;
 	int irq;
 	u8 dma_status;
@@ -1020,10 +1023,25 @@ static int pmi8994_fg_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	/* Set default temperature thresholds */
+	/*
+	 * The charger applies these JEITA thresholds in hardware. The soft
+	 * limits come from alert-celsius and the hard limits from
+	 * operating-range-celsius of the monitored battery, if set.
+	 */
+	if (!power_supply_get_battery_info(chip->batt_psy, &info)) {
+		if (info->temp_alert_min != INT_MIN)
+			soft_cold = info->temp_alert_min * 10;
+		if (info->temp_alert_max != INT_MAX)
+			soft_hot = info->temp_alert_max * 10;
+		if (info->temp_min != INT_MIN)
+			hard_cold = info->temp_min * 10;
+		if (info->temp_max != INT_MAX)
+			hard_hot = info->temp_max * 10;
+	}
+
 	ret = pmi8994_fg_set_temp_threshold(chip,
 					    POWER_SUPPLY_PROP_TEMP_MIN,
-					    BATT_TEMP_JEITA_COLD);
+					    soft_cold);
 	if (ret) {
 		dev_err(chip->dev,
 			"Failed to set cold threshold: %d\n", ret);
@@ -1032,7 +1050,7 @@ static int pmi8994_fg_probe(struct platform_device *pdev)
 
 	ret = pmi8994_fg_set_temp_threshold(chip,
 					    POWER_SUPPLY_PROP_TEMP_MAX,
-					    BATT_TEMP_JEITA_WARM);
+					    soft_hot);
 	if (ret) {
 		dev_err(chip->dev,
 			"Failed to set warm threshold: %d\n", ret);
@@ -1041,7 +1059,7 @@ static int pmi8994_fg_probe(struct platform_device *pdev)
 
 	ret = pmi8994_fg_set_temp_threshold(chip,
 					    POWER_SUPPLY_PROP_TEMP_ALERT_MIN,
-					    BATT_TEMP_JEITA_COOL);
+					    hard_cold);
 	if (ret) {
 		dev_err(chip->dev,
 			"Failed to set cool threshold: %d\n", ret);
@@ -1050,7 +1068,7 @@ static int pmi8994_fg_probe(struct platform_device *pdev)
 
 	ret = pmi8994_fg_set_temp_threshold(chip,
 					    POWER_SUPPLY_PROP_TEMP_ALERT_MAX,
-					    BATT_TEMP_JEITA_HOT);
+					    hard_hot);
 	if (ret) {
 		dev_err(chip->dev,
 			"Failed to set hot threshold: %d\n", ret);
