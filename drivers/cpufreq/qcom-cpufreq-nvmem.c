@@ -561,8 +561,8 @@ static int qcom_cpufreq_probe(struct platform_device *pdev)
 		if (config.supported_hw) {
 			drv->cpus[cpu].opp_token = dev_pm_opp_set_config(cpu_dev, &config);
 			if (drv->cpus[cpu].opp_token < 0) {
-				ret = drv->cpus[cpu].opp_token;
-				dev_err(cpu_dev, "Failed to set OPP config\n");
+				ret = dev_err_probe(cpu_dev, drv->cpus[cpu].opp_token,
+						    "Failed to set OPP config\n");
 				goto free_opp;
 			}
 		}
