@@ -74,10 +74,8 @@ adb, MTP no Windows, porcentagem e status da bateria, limites de carga e CPU a 1
 - **GPIOs reservados:** a lista é uma estimativa baseada em outros telefones msm8953, porque a do
   A001D não é conhecida. Ler um GPIO protegido pode reiniciar o aparelho.
 - **Touch:** a primeira leitura I2C depois do reset nunca termina, e o driver a repete. A causa não foi encontrada.
-- **Avisos no log, sem efeito observado:**
-  - `clk-rcg2: update_config` ao iniciar o painel.
-  - `cpu0: Failed to set OPP config` no início do boot.
-  - `grep: Invalid argument`, do `toybox` do TWRP, ao ler pipes e `/proc`; o resultado continua certo.
+- **Aviso no log, sem efeito:** `grep: Invalid argument`, do `toybox` do TWRP, ao ler pipes e `/proc`. O resultado
+  continua certo.
 - **Sem suporte:** câmera, áudio, modem e Wi-Fi. A config desliga esses blocos ou não os testa.
 - **Não testado:** microSD, USB OTG e suspensão prolongada.
 - **Histórico:** o clone é raso (`--depth=1`). Rode `git fetch --unshallow` antes de publicar.
