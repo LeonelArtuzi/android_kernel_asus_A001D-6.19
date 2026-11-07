@@ -63,8 +63,10 @@ adb, MTP no Windows, porcentagem e status da bateria, limites de carga e CPU a 1
 - **Só o painel TCL.** Em aparelhos com painel Boyi ou Holitech, **provavelmente não há imagem**,
   porque os dois não têm driver aqui.
 - **Carga:**
-  - Limitada a 1 A, contra 1,85 A da stock, porque não há redução por temperatura.
-  - Os limites de temperatura da stock não são aplicados.
+  - 1,85 A, com os limites de temperatura da stock: 10 e 45 °C para reduzir, 0 e 55 °C para parar. O hardware os
+    aplica, como na stock e no 4.9. Medido com carregador de 5 V/2 A e bateria a 4,2 V: 1,1 A na bateria, com a
+    entrada caindo para 4,6 V. O limite ali é a folga entre a entrada e a bateria, não o kernel.
+  - Não há a redução térmica do Android (`thermal-engine`). Ela também não roda no 4.9.
   - Com porta USB comum, a entrada fica em 500 mA.
   - Não deixe carregando sem supervisão.
 - **Porcentagem da bateria:** pode ser menos precisa, porque o driver não usa o perfil da ASUS.

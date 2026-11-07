@@ -20,17 +20,20 @@
 	qcom,board-id = <0xb 0>;
 
 	/*
-	 * 4.35 V cell, same float voltage and termination as stock. Stock charges
-	 * at 1.85 A with thermal mitigation; recovery has none, so it stays at 1 A.
+	 * 4.35 V cell, same float voltage, termination and charge current as
+	 * stock. Stock JEITA thresholds: soft 10/45 C, hard 0/55 C. The charger
+	 * enforces them in hardware, as on stock and on the 4.9 recovery.
 	 */
 	battery: battery {
 		compatible = "simple-battery";
 
 		charge-full-design-microamp-hours = <3820000>;
 		charge-term-current-microamp = <100000>;
-		constant-charge-current-max-microamp = <1000000>;
+		constant-charge-current-max-microamp = <1850000>;
 		voltage-min-design-microvolt = <3400000>;
 		voltage-max-design-microvolt = <4350000>;
+		alert-celsius = <10 45>;
+		operating-range-celsius = <0 55>;
 	};
 
 	gpio-keys {
