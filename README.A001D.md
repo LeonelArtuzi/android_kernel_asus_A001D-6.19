@@ -67,7 +67,10 @@ adb, MTP no Windows, porcentagem e status da bateria, limites de carga e CPU a 1
   - Não há a redução térmica do Android (`thermal-engine`). Ela também não roda no 4.9.
   - Com porta USB comum, a entrada fica em 500 mA.
   - Não deixe carregando sem supervisão.
-- **Porcentagem da bateria:** pode ser menos precisa, porque o driver não usa o perfil da ASUS.
+- **Porcentagem da bateria:** o FG calcula a porcentagem com o perfil gravado na SRAM dele, e este driver não grava
+  perfil. A stock e o 4.9 gravam o perfil da ASUS, e a SRAM o mantém enquanto o PMIC tiver energia. Em 07/11/2026, a
+  SRAM tinha o `asus_3820mah_51k`. Se a bateria descarregar até o PMIC desligar, o FG volta ao perfil de fábrica até a
+  stock ou o 4.9 iniciarem.
 - **GPIOs reservados:** a lista é uma estimativa baseada em outros telefones msm8953, porque a do
   A001D não é conhecida. Ler um GPIO protegido pode reiniciar o aparelho.
 - **Cluster lento no início do boot:** até o driver de clock carregar, entre 2,2 e 3 s, as CPUs 4-7 continuam no XO.
