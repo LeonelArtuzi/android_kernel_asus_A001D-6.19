@@ -15,6 +15,8 @@ bateria do PMI8950.
 | DTS | `sdm450-asus-a001d.dts`, com tensões, memória reservada e ligações da stock |
 | Painel | `panel-tcl-ft8719.c`, gerado da DTB stock |
 | Bateria | `pmi8994_fg`: lê o status do carregador ao iniciar |
+| Entropia | `qcom-rng` lê a PRNG sem configurá-la, com o clock ligado, e alimenta o kernel. Sem isso, o `init` espera ~9 s |
+| I2C do touch | 100 kHz e tempo limite de 200 ms. A 400 kHz, como no stock, o touch trava por segundos |
 | Reboot | Motivo no `imem`, reset morno no PM8953 e no PMI8950, e `PS_HOLD` direto em vez de PSCI |
 | Config | `a001d_twrp_defconfig`, com tudo que a recovery usa embutido |
 | Imagem | Alvo `Image.gz-dtb` em `arch/arm64/Makefile`, porque o LK stock só inicia com a DTB anexada |
@@ -33,6 +35,7 @@ Cada item abaixo já impediu o boot ou deixou o aparelho inutilizável:
 | `IPV6=y` | O `adbd` aborta |
 | `sys.use_memfd=true` (device tree) | Este kernel não tem `ashmem`, e o `recovery` aborta |
 | `FRAMEBUFFER_CONSOLE` desligado | O console do kernel desenha por cima do TWRP |
+| `qcom,prng-ee` e clock ligado na leitura da PRNG | `synchronous external abort` em `qcom_rng_read`, e o aparelho trava sem USB |
 | Reset morno também no PMI8950 | Por padrão, ele desliga quando o `PS_HOLD` cai. O `imem` se perde e `reboot bootloader` vai para o Android |
 
 ## Compilar
@@ -66,7 +69,9 @@ adb, MTP no Windows, porcentagem e status da bateria, limites de carga e CPU a 1
 - **Porcentagem da bateria:** pode ser menos precisa, porque o driver não usa o perfil da ASUS.
 - **GPIOs reservados:** a lista é uma estimativa baseada em outros telefones msm8953, porque a do
   A001D não é conhecida. Ler um GPIO protegido pode reiniciar o aparelho.
-- **Boot mais lento:** o adb sobe em ~45 s, contra ~17 s no 4.9.
+- **Tempo de boot variável:** o adb sobe entre 9 e 18 s. A causa da variação é desconhecida: só descompactar o ramdisk
+  leva de 1,5 a 13 s, com a mesma imagem.
+- **Touch:** a primeira leitura I2C depois do reset nunca termina, e o driver a repete. A causa não foi encontrada.
 - **Cópia em memória:** uma única medição mostrou piora com o ajuste de frequência ligado, sem causa
   conhecida. Na prática, o desempenho da interface ficou comparável ao do 4.9.
 - **Avisos no log, sem efeito observado:**

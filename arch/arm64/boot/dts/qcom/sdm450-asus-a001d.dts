@@ -78,6 +78,16 @@
 };
 
 &i2c_3 {
+	/*
+	 * Not the stock 400 kHz: there the FT8719 intermittently returns no touch points
+	 * for seconds while it keeps raising interrupts, so the touch freezes.
+	 */
+	clock-frequency = <100000>;
+	/*
+	 * The first read after the touch controller resets never completes. The driver
+	 * retries it, so don't wait the 5 s default, sized for a 128 KiB DMA transfer.
+	 */
+	i2c-transfer-timeout-us = <200000>;
 	status = "okay";
 
 	/* FT8719 TDDI. The mainline driver has no firmware write path. */
@@ -385,4 +395,9 @@
 			qcom,warm-reset-on-reboot-cmd;
 		};
 	};
+};
+
+/* The secure world owns the PRNG setup here: the stock DT has qcom,no-qrng-config */
+&{/soc@0/rng@e3000} {
+	compatible = "qcom,prng-ee";
 };

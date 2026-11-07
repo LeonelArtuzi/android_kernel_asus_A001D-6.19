@@ -1687,7 +1687,7 @@ static int qup_i2c_probe(struct platform_device *pdev)
 	static const int blk_sizes[] = {4, 16, 32};
 	struct qup_i2c_dev *qup;
 	unsigned long one_bit_t;
-	u32 io_mode, hw_ver, size;
+	u32 io_mode, hw_ver, size, timeout_us;
 	int ret, fs_div, hs_div;
 	u32 src_clk_freq = DEFAULT_SRC_CLK;
 	u32 clk_freq = DEFAULT_CLK_FREQ;
@@ -1909,6 +1909,8 @@ nodma:
 	qup->one_byte_t = one_bit_t * 9;
 	qup->xfer_timeout = TOUT_MIN * HZ +
 		usecs_to_jiffies(MX_DMA_TX_RX_LEN * qup->one_byte_t);
+	if (!device_property_read_u32(qup->dev, "i2c-transfer-timeout-us", &timeout_us))
+		qup->xfer_timeout = usecs_to_jiffies(timeout_us);
 
 	dev_dbg(qup->dev, "IN:block:%d, fifo:%d, OUT:block:%d, fifo:%d\n",
 		qup->in_blk_sz, qup->in_fifo_sz,

@@ -116,8 +116,18 @@ static int qcom_rng_seed(struct crypto_rng *tfm, const u8 *seed,
 static int qcom_hwrng_read(struct hwrng *hwrng, void *data, size_t max, bool wait)
 {
 	struct qcom_rng *qrng = container_of(hwrng, struct qcom_rng, hwrng);
+	int ret;
 
-	return qcom_rng_read(qrng, data, max);
+	ret = clk_prepare_enable(qrng->clk);
+	if (ret)
+		return ret;
+
+	mutex_lock(&qrng->lock);
+	ret = qcom_rng_read(qrng, data, max);
+	mutex_unlock(&qrng->lock);
+	clk_disable_unprepare(qrng->clk);
+
+	return ret;
 }
 
 static int qcom_rng_enable(struct qcom_rng *rng)
@@ -238,7 +248,8 @@ static struct qcom_rng_match_data qcom_prng_match_data = {
 
 static struct qcom_rng_match_data qcom_prng_ee_match_data = {
 	.skip_init = true,
-	.hwrng_support = false,
+	/* Nothing else feeds the kernel pool on the ASUS ZB634KL, and userspace blocks on it for seconds */
+	.hwrng_support = true,
 };
 
 static struct qcom_rng_match_data qcom_trng_match_data = {
