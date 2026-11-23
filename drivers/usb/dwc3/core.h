@@ -1035,6 +1035,7 @@ struct dwc3_glue_ops {
  * @fladj: frame length adjustment
  * @ref_clk_per: reference clock period configuration
  * @irq_gadget: peripheral controller's IRQ number
+ * @gadget_ws: held while a host has the gadget enumerated and the bus is not suspended
  * @otg_irq: IRQ number for OTG IRQs
  * @current_otg_role: current role of operation while using the OTG block
  * @desired_otg_role: desired role of operation while using the OTG block
@@ -1250,6 +1251,7 @@ struct dwc3 {
 	u32			fladj;
 	u32			ref_clk_per;
 	u32			irq_gadget;
+	struct wakeup_source	*gadget_ws;
 	u32			otg_irq;
 	u32			current_otg_role;
 	u32			desired_otg_role;

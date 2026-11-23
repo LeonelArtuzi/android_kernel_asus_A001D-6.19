@@ -2694,6 +2694,20 @@ static void dwc3_gadget_disable_irq(struct dwc3 *dwc);
 static void __dwc3_gadget_stop(struct dwc3 *dwc);
 static int __dwc3_gadget_start(struct dwc3 *dwc);
 
+/*
+ * Keep the system out of suspend while a host has us enumerated and the bus is
+ * active: suspending soft-disconnects the gadget, so the host would lose the
+ * device (adb drops on every screen-off). A plain charger never enumerates us,
+ * and a suspended bus (sleeping host) lets the system suspend again.
+ */
+static void dwc3_gadget_update_ws(struct dwc3 *dwc)
+{
+	if (dwc->connected && !dwc->suspended)
+		__pm_stay_awake(dwc->gadget_ws);
+	else
+		__pm_relax(dwc->gadget_ws);
+}
+
 static int dwc3_gadget_soft_disconnect(struct dwc3 *dwc)
 {
 	unsigned long flags;
@@ -2706,6 +2720,7 @@ static int dwc3_gadget_soft_disconnect(struct dwc3 *dwc)
 	}
 
 	dwc->connected = false;
+	dwc3_gadget_update_ws(dwc);
 
 	/*
 	 * Attempt to end pending SETUP status phase, and not wait for the
@@ -4508,6 +4523,8 @@ static void dwc3_gadget_interrupt(struct dwc3 *dwc,
 	default:
 		dev_WARN(dwc->dev, "UNKNOWN IRQ %d\n", event->type);
 	}
+
+	dwc3_gadget_update_ws(dwc);
 }
 
 static void dwc3_process_event_entry(struct dwc3 *dwc,
@@ -4706,6 +4723,8 @@ int dwc3_gadget_init(struct dwc3 *dwc)
 	}
 
 	dwc->irq_gadget = irq;
+	/* NULL on failure, which __pm_stay_awake()/__pm_relax() ignore */
+	dwc->gadget_ws = wakeup_source_register(dwc->dev, "dwc3-gadget");
 
 	dwc->ep0_trb = dma_alloc_coherent(dwc->sysdev,
 					  sizeof(*dwc->ep0_trb) * 2,
@@ -4815,6 +4834,8 @@ err1:
 			dwc->ep0_trb, dwc->ep0_trb_addr);
 
 err0:
+	wakeup_source_unregister(dwc->gadget_ws);
+	dwc->gadget_ws = NULL;
 	return ret;
 }
 EXPORT_SYMBOL_GPL(dwc3_gadget_init);
@@ -4835,6 +4856,7 @@ void dwc3_gadget_exit(struct dwc3 *dwc)
 	kfree(dwc->setup_buf);
 	dma_free_coherent(dwc->sysdev, sizeof(*dwc->ep0_trb) * 2,
 			  dwc->ep0_trb, dwc->ep0_trb_addr);
+	wakeup_source_unregister(dwc->gadget_ws);
 }
 EXPORT_SYMBOL_GPL(dwc3_gadget_exit);
 
