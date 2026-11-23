@@ -124,11 +124,23 @@ static void a5xx_submit_in_rb(struct msm_gpu *gpu, struct msm_gem_submit *submit
 	msm_gpu_retire(gpu);
 }
 
+static void get_stats_counter(struct msm_ringbuffer *ring, u32 counter,
+		u64 iova)
+{
+	OUT_PKT7(ring, CP_REG_TO_MEM, 3);
+	OUT_RING(ring, CP_REG_TO_MEM_0_REG(counter) |
+		CP_REG_TO_MEM_0_CNT(2) |
+		CP_REG_TO_MEM_0_64B);
+	OUT_RING(ring, lower_32_bits(iova));
+	OUT_RING(ring, upper_32_bits(iova));
+}
+
 static void a5xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 {
 	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
 	struct a5xx_gpu *a5xx_gpu = to_a5xx_gpu(adreno_gpu);
 	struct msm_ringbuffer *ring = submit->ring;
+	unsigned int index = submit->seqno % MSM_GPU_SUBMIT_STATS_COUNT;
 	unsigned int i, ibs = 0;
 
 	adreno_check_and_reenable_stall(adreno_gpu);
@@ -167,6 +179,12 @@ static void a5xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 	OUT_PKT7(ring, CP_YIELD_ENABLE, 1);
 	OUT_RING(ring, 0x02);
 
+	/* CP_PERFCTR_CP_SEL_0 counts every CP cycle (see a5xx_hw_init) */
+	get_stats_counter(ring, REG_A5XX_RBBM_PERFCTR_CP_0_LO,
+		rbmemptr_stats(ring, index, cpcycles_start));
+	get_stats_counter(ring, REG_A5XX_RBBM_ALWAYSON_COUNTER_LO,
+		rbmemptr_stats(ring, index, alwayson_start));
+
 	/* Submit the commands */
 	for (i = 0; i < submit->nr_cmds; i++) {
 		switch (submit->cmd[i].type) {
@@ -195,6 +213,11 @@ static void a5xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 		if ((ibs % 32) == 0)
 			update_shadow_rptr(gpu, ring);
 	}
+
+	get_stats_counter(ring, REG_A5XX_RBBM_PERFCTR_CP_0_LO,
+		rbmemptr_stats(ring, index, cpcycles_end));
+	get_stats_counter(ring, REG_A5XX_RBBM_ALWAYSON_COUNTER_LO,
+		rbmemptr_stats(ring, index, alwayson_end));
 
 	/*
 	 * Write the render mode to NULL (0) to indicate to the CP that the IBs
