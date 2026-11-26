@@ -112,6 +112,18 @@
 	};
 };
 
+&i2c_6 {
+	status = "okay";
+
+	/* Mono speaker amp. The stock tuning (mono.cnt) is "ZB634KL_181113V1.speaker". */
+	speaker_codec: audio-codec@34 {
+		compatible = "nxp,tfa9874";
+		reg = <0x34>;
+		sound-name-prefix = "Speaker";
+		#sound-dai-cells = <0>;
+	};
+};
+
 /* Stock panel rails: qcom,qpnp-ibb-init-lcd-voltage and qcom,qpnp-lab-init-lcd-voltage */
 &ibb {
 	regulator-min-microvolt = <5700000>;
@@ -121,6 +133,10 @@
 &lab {
 	regulator-min-microvolt = <5500000>;
 	regulator-max-microvolt = <5500000>;
+};
+
+&lpass {
+	status = "okay";
 };
 
 &mdss {
@@ -189,6 +205,13 @@
 	qcom,cabc;
 
 	status = "okay";
+};
+
+&q6afedai {
+	dai@22 {
+		reg = <QUATERNARY_MI2S_RX>;
+		qcom,sd-lines = <0>;
+	};
 };
 
 &rpm_requests {
@@ -331,9 +354,49 @@
 	status = "okay";
 };
 
+&sound_card {
+	model = "asus-a001d";
+
+	pinctrl-0 = <&cdc_pdm_lines_act &cdc_pdm_lines_2_act &cdc_pdm_comp_lines_act
+		     &quat_mi2s_act>;
+	pinctrl-1 = <&cdc_pdm_lines_sus &cdc_pdm_lines_2_sus &cdc_pdm_comp_lines_sus
+		     &quat_mi2s_sus>;
+	pinctrl-names = "default", "sleep";
+
+	status = "okay";
+
+	/* The stock HAL routes the speaker to QUAT_MI2S_RX, wired to the TFA9874 */
+	quaternary-mi2s-dai-link {
+		link-name = "Quaternary MI2S";
+
+		cpu {
+			sound-dai = <&q6afedai QUATERNARY_MI2S_RX>;
+		};
+
+		platform {
+			sound-dai = <&q6routing>;
+		};
+
+		codec {
+			sound-dai = <&speaker_codec>;
+		};
+	};
+};
+
 &tlmm {
-	/* Union of the ranges other msm8953 phones reserve; A001D ones are not known yet. */
-	gpio-reserved-ranges = <0 4>, <95 5>, <111 1>, <126 1>, <135 4>;
+	/*
+	 * Union of the ranges other msm8953 phones reserve; A001D ones are not known yet.
+	 * Not 135-138: the stock DT muxes them to sec_mi2s for the speaker amp.
+	 */
+	gpio-reserved-ranges = <0 4>, <95 5>, <111 1>, <126 1>;
+
+	/* The stock tfa98xx driver pulses it high to reset the amp; low keeps it running */
+	tfa-reset-hog {
+		gpio-hog;
+		gpios = <8 GPIO_ACTIVE_HIGH>;
+		output-low;
+		line-name = "tfa9874-reset";
+	};
 
 	pmx_mdss_default: pmx-mdss-default-state {
 		pins = "gpio61";
@@ -346,6 +409,20 @@
 	pmx_mdss_sleep: pmx-mdss-sleep-state {
 		pins = "gpio61";
 		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-down;
+	};
+
+	quat_mi2s_act: quat-mi2s-act-state {
+		pins = "gpio135", "gpio136", "gpio137", "gpio138";
+		function = "sec_mi2s";
+		drive-strength = <8>;
+		bias-disable;
+	};
+
+	quat_mi2s_sus: quat-mi2s-sus-state {
+		pins = "gpio135", "gpio136", "gpio137", "gpio138";
+		function = "sec_mi2s";
 		drive-strength = <2>;
 		bias-pull-down;
 	};
@@ -366,6 +443,21 @@
 };
 
 &usb3 {
+	status = "okay";
+};
+
+/* Stock msm8952 audio node: hphl switch normally open, ground switch normally closed */
+&wcd_codec {
+	qcom,hphl-jack-type-normally-open;
+	qcom,micbias1-ext-cap;
+	/* Button thresholds of the downstream msm8952 machine driver */
+	qcom,mbhc-vthreshold-high = <75 150 237 450 500>;
+	qcom,mbhc-vthreshold-low = <75 150 237 450 500>;
+
+	vdd-cdc-io-supply = <&pm8953_l5>;
+	vdd-cdc-tx-rx-cx-supply = <&pm8953_s4>;
+	vdd-micbias-supply = <&pm8953_l13>;
+
 	status = "okay";
 };
 
