@@ -51,6 +51,9 @@ struct qcom_iommu_dev {
 	void __iomem		*local_base;
 	u32			 sec_id;
 	u8			 max_asid;
+	spinlock_t		 hw_lock;   /* orders TLB maintenance vs system sleep */
+	bool			 hw_off;    /* clocks off for system sleep */
+	bool			 tlb_stale; /* TLB maintenance skipped while hw_off */
 	struct qcom_iommu_ctx	*ctxs[];   /* indexed by asid */
 };
 
@@ -111,22 +114,45 @@ iommu_readq(struct qcom_iommu_ctx *ctx, unsigned reg)
 	return readq_relaxed(ctx->base + reg);
 }
 
+/*
+ * Runtime PM is disabled during system sleep, so pm_runtime_get_sync() cannot
+ * clock the IOMMU, yet dma-bufs can still be released (and unmapped) from
+ * workqueues.  Skip the register accesses then: the masters are suspended, and
+ * the TLBs are invalidated on resume.  Called with hw_lock held.
+ */
+static bool qcom_iommu_hw_off(struct qcom_iommu_domain *qcom_domain)
+{
+	struct qcom_iommu_dev *qcom_iommu = qcom_domain->iommu;
+
+	if (!qcom_iommu->hw_off)
+		return false;
+	qcom_iommu->tlb_stale = true;
+	return true;
+}
+
+static void qcom_iommu_ctx_tlb_sync(struct qcom_iommu_ctx *ctx)
+{
+	unsigned int val, ret;
+
+	iommu_writel(ctx, ARM_SMMU_CB_TLBSYNC, 0);
+
+	ret = readl_poll_timeout(ctx->base + ARM_SMMU_CB_TLBSTATUS, val,
+				 (val & 0x1) == 0, 0, 5000000);
+	if (ret)
+		dev_err(ctx->dev, "timeout waiting for TLB SYNC\n");
+}
+
 static void qcom_iommu_tlb_sync(void *cookie)
 {
 	struct qcom_iommu_domain *qcom_domain = cookie;
 	struct iommu_fwspec *fwspec = qcom_domain->fwspec;
 	unsigned i;
 
+	if (qcom_iommu_hw_off(qcom_domain))
+		return;
+
 	for (i = 0; i < fwspec->num_ids; i++) {
-		struct qcom_iommu_ctx *ctx = to_ctx(qcom_domain, fwspec->ids[i]);
-		unsigned int val, ret;
-
-		iommu_writel(ctx, ARM_SMMU_CB_TLBSYNC, 0);
-
-		ret = readl_poll_timeout(ctx->base + ARM_SMMU_CB_TLBSTATUS, val,
-					 (val & 0x1) == 0, 0, 5000000);
-		if (ret)
-			dev_err(ctx->dev, "timeout waiting for TLB SYNC\n");
+		qcom_iommu_ctx_tlb_sync(to_ctx(qcom_domain, fwspec->ids[i]));
 	}
 }
 
@@ -135,6 +161,9 @@ static void qcom_iommu_tlb_inv_context(void *cookie)
 	struct qcom_iommu_domain *qcom_domain = cookie;
 	struct iommu_fwspec *fwspec = qcom_domain->fwspec;
 	unsigned i;
+
+	if (qcom_iommu_hw_off(qcom_domain))
+		return;
 
 	for (i = 0; i < fwspec->num_ids; i++) {
 		struct qcom_iommu_ctx *ctx = to_ctx(qcom_domain, fwspec->ids[i]);
@@ -150,6 +179,9 @@ static void qcom_iommu_tlb_inv_range_nosync(unsigned long iova, size_t size,
 	struct qcom_iommu_domain *qcom_domain = cookie;
 	struct iommu_fwspec *fwspec = qcom_domain->fwspec;
 	unsigned i, reg;
+
+	if (qcom_iommu_hw_off(qcom_domain))
+		return;
 
 	reg = leaf ? ARM_SMMU_CB_S1_TLBIVAL : ARM_SMMU_CB_S1_TLBIVA;
 
@@ -343,6 +375,7 @@ static struct iommu_domain *qcom_iommu_domain_alloc_paging(struct device *dev)
 static void qcom_iommu_domain_free(struct iommu_domain *domain)
 {
 	struct qcom_iommu_domain *qcom_domain = to_qcom_iommu_domain(domain);
+	unsigned long flags;
 
 	if (qcom_domain->iommu) {
 		/*
@@ -352,7 +385,9 @@ static void qcom_iommu_domain_free(struct iommu_domain *domain)
 		 * is on to avoid unclocked accesses in the TLB inv path:
 		 */
 		pm_runtime_get_sync(qcom_domain->iommu->dev);
+		spin_lock_irqsave(&qcom_domain->iommu->hw_lock, flags);
 		free_io_pgtable_ops(qcom_domain->pgtbl_ops);
+		spin_unlock_irqrestore(&qcom_domain->iommu->hw_lock, flags);
 		pm_runtime_put_autosuspend(qcom_domain->iommu->dev);
 	}
 
@@ -463,7 +498,9 @@ static size_t qcom_iommu_unmap(struct iommu_domain *domain, unsigned long iova,
 	 */
 	pm_runtime_get_sync(qcom_domain->iommu->dev);
 	spin_lock_irqsave(&qcom_domain->pgtbl_lock, flags);
+	spin_lock(&qcom_domain->iommu->hw_lock);
 	ret = ops->unmap_pages(ops, iova, pgsize, pgcount, gather);
+	spin_unlock(&qcom_domain->iommu->hw_lock);
 	spin_unlock_irqrestore(&qcom_domain->pgtbl_lock, flags);
 	pm_runtime_put_autosuspend(qcom_domain->iommu->dev);
 
@@ -475,11 +512,15 @@ static void qcom_iommu_flush_iotlb_all(struct iommu_domain *domain)
 	struct qcom_iommu_domain *qcom_domain = to_qcom_iommu_domain(domain);
 	struct io_pgtable *pgtable = container_of(qcom_domain->pgtbl_ops,
 						  struct io_pgtable, ops);
+	unsigned long flags;
+
 	if (!qcom_domain->pgtbl_ops)
 		return;
 
 	pm_runtime_get_sync(qcom_domain->iommu->dev);
+	spin_lock_irqsave(&qcom_domain->iommu->hw_lock, flags);
 	qcom_iommu_tlb_sync(pgtable->cookie);
+	spin_unlock_irqrestore(&qcom_domain->iommu->hw_lock, flags);
 	pm_runtime_put_autosuspend(qcom_domain->iommu->dev);
 }
 
@@ -797,6 +838,7 @@ static int qcom_iommu_device_probe(struct platform_device *pdev)
 	if (!qcom_iommu)
 		return -ENOMEM;
 	qcom_iommu->max_asid = max_asid;
+	spin_lock_init(&qcom_iommu->hw_lock);
 	qcom_iommu->dev = dev;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -927,10 +969,65 @@ static int __maybe_unused qcom_iommu_suspend(struct device *dev)
 	return 0;
 }
 
+/* Lets TLB maintenance reach the hardware again, flushing what was skipped. */
+static void qcom_iommu_hw_on(struct qcom_iommu_dev *qcom_iommu)
+{
+	unsigned long flags;
+	bool stale;
+	int asid;
+
+	spin_lock_irqsave(&qcom_iommu->hw_lock, flags);
+	qcom_iommu->hw_off = false;
+	stale = qcom_iommu->tlb_stale;
+	qcom_iommu->tlb_stale = false;
+	spin_unlock_irqrestore(&qcom_iommu->hw_lock, flags);
+
+	if (!stale)
+		return;
+
+	dev_info_ratelimited(qcom_iommu->dev,
+			     "flushing TLBs for unmaps done during system sleep\n");
+	pm_runtime_get_sync(qcom_iommu->dev);
+	for (asid = 0; asid <= qcom_iommu->max_asid; asid++) {
+		struct qcom_iommu_ctx *ctx = qcom_iommu->ctxs[asid];
+
+		if (!ctx || !ctx->domain)
+			continue;
+		iommu_writel(ctx, ARM_SMMU_CB_S1_TLBIASID, ctx->asid);
+		qcom_iommu_ctx_tlb_sync(ctx);
+	}
+	pm_runtime_put_autosuspend(qcom_iommu->dev);
+}
+
+static int __maybe_unused qcom_iommu_sys_suspend(struct device *dev)
+{
+	struct qcom_iommu_dev *qcom_iommu = dev_get_drvdata(dev);
+	unsigned long flags;
+	int ret;
+
+	spin_lock_irqsave(&qcom_iommu->hw_lock, flags);
+	qcom_iommu->hw_off = true;
+	spin_unlock_irqrestore(&qcom_iommu->hw_lock, flags);
+
+	ret = pm_runtime_force_suspend(dev);
+	if (ret)
+		qcom_iommu_hw_on(qcom_iommu);
+	return ret;
+}
+
+static int __maybe_unused qcom_iommu_sys_resume(struct device *dev)
+{
+	struct qcom_iommu_dev *qcom_iommu = dev_get_drvdata(dev);
+	int ret;
+
+	ret = pm_runtime_force_resume(dev);
+	qcom_iommu_hw_on(qcom_iommu);
+	return ret;
+}
+
 static const struct dev_pm_ops qcom_iommu_pm_ops = {
 	SET_RUNTIME_PM_OPS(qcom_iommu_suspend, qcom_iommu_resume, NULL)
-	SET_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend,
-				pm_runtime_force_resume)
+	SET_SYSTEM_SLEEP_PM_OPS(qcom_iommu_sys_suspend, qcom_iommu_sys_resume)
 };
 
 static const struct of_device_id qcom_iommu_of_match[] = {
